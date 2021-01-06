@@ -1,0 +1,404 @@
+
+def ur3_application():
+
+    def Modulo(fValue, fDivisor):
+        if fValue > 0:
+            while fValue >= fDivisor:
+                fValue = fValue - fDivisor
+            end
+        elif fValue < 0:
+            while fValue <= fDivisor:
+                fValue = fValue + fDivisor
+            end
+        end
+        return fValue
+    end
+
+    def Setter(strCommand, lstfValues):
+        if strCommand == "{strSetToolSpeed}":
+            if 0.0 < lstfValues[1] <= 3000.0:   #mm/s
+                fToolSpeed = lstfValues[1]/1000 #m/s
+            end
+        
+        elif strCommand == "{strSetJointSpeed}":
+            if 0.0 < lstfValues[1] <= 360.0:         #deg/s
+                fJointSpeed = d2r(lstfValues[1])    #rad/s
+            end
+
+        elif strCommand == "{strSetToolAccel}":
+            if 0.0 < lstfValues[1] <= 10000.0:  #mm/s^2
+                fToolAccel = lstfValues[1]/1000 #m/s
+            end
+
+        elif strCommand == "{strSetJointAccel}":
+            if 0.0 < lstfValues[1] <= 4584.0:       #deg/s^2
+                fJointAccel = d2r(lstfValues[1])    #rad/s^2
+            end
+
+        elif strCommand == "{strSetPayloadMass}":
+            if 0.0 < lstfValues[1] <= 3.0:     #kg
+                set_payload_mass(lstfValues[1])
+            end
+        
+        elif strCommand == "{strSetTcp}":
+            lstTcp = p[lstfValues[1]/1000, lstfValues[2]/1000, lstfValues[3]/1000, d2r(lstfValues[4]), d2r(lstfValues[5]), d2r(lstfValues[6])]
+            set_tcp(lstTcp)
+
+        elif strCommand == "{strSetRobotFromStage}":
+            lstfRobotFromStageInv = pose_inv(p[lstfValues[1]/1000, lstfValues[2]/1000, lstfValues[3]/1000, d2r(lstfValues[4]), d2r(lstfValues[5]), d2r(lstfValues[6])])
+
+        elif strCommand == "{strSetGravity}":
+            lstfDirection = [lstfValues[1] * 9.82, lstfValues[2] * 9.82, lstfValues[3] * 9.82]
+            set_gravity(lstfDirection)
+
+        elif strCommand == "{strSetDigitalOutput}":
+            if lstfValues[2] == 1.0:
+                set_standard_digital_out(lstfValues[1], True)
+            elif lstfValues[2] == 0.0:
+                set_standard_digital_out(lstfValues[1], False)
+            end
+
+        end
+    end
+
+    def GetTcp():
+        lstfCurrentPose = get_actual_tcp_pose()
+
+        lstfCurrentPose[0] = lstfCurrentPose[0]*1000
+        lstfCurrentPose[1] = lstfCurrentPose[1]*1000
+        lstfCurrentPose[2] = lstfCurrentPose[2]*1000
+        lstfCurrentPose[3] = r2d(lstfCurrentPose[3])
+        lstfCurrentPose[4] = r2d(lstfCurrentPose[4])
+        lstfCurrentPose[5] = r2d(lstfCurrentPose[5])
+        
+        return lstfCurrentPose
+    end
+
+    def GetJointAngles():
+        lstfValues = socket_read_ascii_float(6, "{strMainSocket}")
+        
+        if lstfValues[1] == -1.0 and lstfValues[2] == -1.0 and lstfValues[3] == -1.0 and lstfValues[4] == -1.0 and lstfValues[5] == -1.0 and lstfValues[6] == -1.0:
+            lstfJointAngles = get_actual_joint_positions()
+        else:
+            lstToolPose = p[lstfValues[1]/1000, lstfValues[2]/1000, lstfValues[3]/1000, d2r(lstfValues[4]), d2r(lstfValues[5]), d2r(lstfValues[6])]
+            
+            if is_within_safety_limits(lstToolPose) == True:
+                lstJointPose = get_actual_joint_positions()
+                lstfJointAngles = get_inverse_kin(x=lstToolPose, qnear=lstJointPose)
+            else:
+                lstfJointAngles = [0,0,0,0,0,0]
+            end
+        end
+        
+        lstfJointAngles[0] = r2d(lstfJointAngles[0])
+        lstfJointAngles[1] = r2d(lstfJointAngles[1])
+        lstfJointAngles[2] = r2d(lstfJointAngles[2])
+        lstfJointAngles[3] = r2d(lstfJointAngles[3])
+        lstfJointAngles[4] = r2d(lstfJointAngles[4])
+        lstfJointAngles[5] = r2d(lstfJointAngles[5])
+
+        return lstfJointAngles
+    end
+
+    def GetRobotCoordinates(lstfExternalSystemPose, lstfInverseMountingPose):
+        lstfRobotCoordinatesPose = pose_trans(lstfInverseMountingPose, lstfExternalSystemPose)
+        return lstfRobotCoordinatesPose
+    end
+
+    def BinaryListConcatenation(lstbLeastSig, lstbMostSig):
+        i = 0
+        lstfConcatBinList = [False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False,False]
+        while i < 16:
+            lstfConcatBinList[i] = lstbLeastSig[i]
+            lstfConcatBinList[i+16] = lstbMostSig[i]
+            i = i + 1
+        end
+        return lstfConcatBinList
+    end
+
+    def GetStageValues(nLSBStage, nMSBStage):
+        lstbLeast = integer_to_binary_list(nLSBStage)
+        lstbMost = integer_to_binary_list(nMSBStage)
+        lstbValue = BinaryListConcatenation(lstbLeast, lstbMost)
+        return binary_list_to_integer(lstbValue)
+    end
+
+    thread MoveTracker():
+        while 1:
+            socket_send_string("{strMovingFlag}", "{strMainSocket}")
+            sync()
+        end
+    end
+
+    thread ModbusRead():
+        while 1:
+            fStageX1 = modbus_get_signal_status("STAGEX1ABS")
+            fStageX2 = modbus_get_signal_status("STAGEX2ABS")
+            fStageY1 = modbus_get_signal_status("STAGEY1ABS")
+            fStageY2 = modbus_get_signal_status("STAGEY2ABS")
+            fStageZ1 = modbus_get_signal_status("STAGEZ1ABS")
+            fStageZ2 = modbus_get_signal_status("STAGEZ2ABS")
+            fStageX = GetStageValues(fStageX1, fStageX2)/1000
+            fStageY = GetStageValues(fStageY1, fStageY2)/1000
+            fStageZ = GetStageValues(fStageZ1, fStageZ2)/1000
+            lstfRobot = GetRobotCoordinates(p[fStageX/1000, fStageY/1000, fStageZ/1000, 0.0, 0.0, 0.0], lstfRobotFromStageInv)
+            fRobotX = lstfRobot[0]
+            fRobotY = lstfRobot[1]
+            fRobotZ = lstfRobot[2]
+            fRobotRx = lstfRobot[3]
+            fRobotRy = lstfRobot[4]
+            fRobotRz = lstfRobot[5]
+            nMoveFlag = modbus_get_signal_status("MOVEFLAG")
+
+            sync()
+        end
+    end
+
+    thread SocketRead():
+        socket_send_string("Ready", "{strMainSocket}")
+        while 1:
+            lstfFloats = socket_read_ascii_float(6, "{strMainSocket}", timeout=0)
+            if lstfFloats[0] != 6:
+                continue
+            else:
+                if lstfFloats[1] == -1.0 and lstfFloats[2] == -1.0 and lstfFloats[3] == -1.0 and lstfFloats[4] == -1.0 and lstfFloats[5] == -1.0 and lstfFloats[6] == -1.0:
+                    bMoveFlag = False
+                    # lstfCurrPose = get_actual_tcp_pose()
+                    # fRobotX = lstfCurrPose[0]
+                    # fRobotY = lstfCurrPose[1]
+                    # fRobotZ = lstfCurrPose[2]
+                    # fRobotRx = lstfCurrPose[3]
+                    # fRobotRy = lstfCurrPose[4]
+                    # fRobotRz = lstfCurrPose[5]
+                    break
+                else:
+                    fRobotX = lstfFloats[1]/1000
+                    fRobotY = lstfFloats[2]/1000
+                    fRobotZ = lstfFloats[3]/1000
+                    fRobotRx = d2r(lstfFloats[4])
+                    fRobotRy = d2r(lstfFloats[5])
+                    fRobotRz = d2r(lstfFloats[6])
+                end
+            end
+            # sync()
+        end
+    end
+
+    thread Move():
+        bMoveFlag = True
+        i = 1
+        while i <= fNumMoves:
+            if lstnMoveTypes[i] == 108:     #movel
+                fToolAccel = lstfAccelData[i] / 1000
+                fToolSpeed = lstfSpeedData[i] / 1000
+                lstToolPose = p[lstfMoveData[(6*(i-1)+1)]/1000, lstfMoveData[(6*(i-1)+2)]/1000, lstfMoveData[(6*(i-1)+3)]/1000, d2r(lstfMoveData[(6*(i-1)+4)]), d2r(lstfMoveData[(6*(i-1)+5)]), d2r(lstfMoveData[(6*(i-1)+6)])]
+                
+                if is_within_safety_limits(lstToolPose) == False:
+                    bBadMove = True
+                    break
+                end
+
+                lstJointPose = get_actual_joint_positions()
+                # popup(lstJointPose[5])
+                # fCurrentJoint = Modulo(lstJointPose[5], 6.28)
+                # if lstJointPose[5] >= 3.14:
+                #     lstJointPose[5] = lstJointPose[5] - 1.57
+                # elif lstJointPose[5] > 0 and lstJointPose[5] < 3.14:
+                #     lstJointPose[5] = lstJointPose[5] + 1.57
+                # elif lstJointPose[5] < 0 and lstJointPose[5] > -3.14:
+                #     lstJointPose[5] = lstJointPose[5] - 1.57
+                # elif lstJointPose[5] <= -3.14:
+                #     lstJointPose[5] = lstJointPose[5] + 1.57
+                # end
+
+                lstNewJoint = get_inverse_kin(x=lstToolPose, qnear=lstJointPose)
+                if lstNewJoint[5] < {fJ6LoLimit}:
+                    lstNewJoint[5] = lstNewJoint[5] + 6.28
+                elif lstNewJoint[5] > {fJ6HiLimit}:
+                    lstNewJoint[5] = lstNewJoint[5] - 6.28
+                end
+                movel(lstNewJoint, fToolAccel, fToolSpeed, r=fBlendRadius)
+            
+            elif lstnMoveTypes[i] == 106:   #movej
+                fJointAccel = lstfAccelData[i] / 1000
+                fJointSpeed = lstfSpeedData[i] / 1000
+                lstJointPose = [d2r(lstfMoveData[(6*(i-1)+1)]), d2r(lstfMoveData[(6*(i-1)+2)]), d2r(lstfMoveData[(6*(i-1)+3)]), d2r(lstfMoveData[(6*(i-1)+4)]), d2r(lstfMoveData[(6*(i-1)+5)]), d2r(lstfMoveData[(6*(i-1)+6)])]
+                
+                if is_within_safety_limits(lstJointPose) == False:
+                    bBadMove = True
+                    break
+                end
+
+                movej(lstJointPose, fJointAccel, fJointSpeed, r=fBlendRadius)
+
+            end
+            i = i + 1
+            sync()
+        end
+        stopl(fToolAccel)
+        bMoveFlag = False
+    end
+
+    def setup():
+        
+        #setup main thread sockets and global variables
+        global fToolSpeed = 0.0
+        global fJointSpeed = 0.0
+        global fToolAccel = 0.0
+        global fJointAccel = 0.0
+        global lstfSpeedData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        global lstfAccelData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+        global fNumMoves = 0.0
+        global fBlendRadius = 0.0
+        global lstnMoveTypes = [0,0,0,0,0,0]
+        global lstfMoveData = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+        
+        global bMoveFlag = False
+        global nMoveFlag = 0
+        global fRobotX = 0.0
+        global fRobotY = 0.0
+        global fRobotZ = 0.0
+        global fRobotRx = 0.0
+        global fRobotRy = 0.0
+        global fRobotRz = 0.0
+        global bBadMove = False
+        global lstfNewJointPose = [0,0,0,0,0,0]
+        global lstfNewToolPose = p[0,0,0,0,0,0]
+
+        global lstfRobotFromStageInv = p[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+        if socket_open("{strHostIp}", {nPort}, "{strMainSocket}") == False:
+            popup("Error: Could not establish communiction with host")
+        else:
+            socket_send_string("Success: connection on main socket established", "{strMainSocket}")
+        end
+
+        #modbus setup
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageWorldXCoilLo}, 3, "STAGEX1ABS")
+        modbus_set_signal_update_frequency("STAGEX1ABS", {nSampleFrequency})
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageWorldXCoilHi}, 3, "STAGEX2ABS")
+        modbus_set_signal_update_frequency("STAGEX2ABS", {nSampleFrequency})
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageWorldYCoilLo}, 3, "STAGEY1ABS")
+        modbus_set_signal_update_frequency("STAGEY1ABS", {nSampleFrequency})
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageWorldYCoilHi}, 3, "STAGEY2ABS")
+        modbus_set_signal_update_frequency("STAGEY2ABS", {nSampleFrequency})
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageWorldZCoilLo}, 3, "STAGEZ1ABS")
+        modbus_set_signal_update_frequency("STAGEZ1ABS", {nSampleFrequency})
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageWorldZCoilHi}, 3, "STAGEZ2ABS")
+        modbus_set_signal_update_frequency("STAGEZ2ABS", {nSampleFrequency})
+        modbus_add_signal("{strStageIpAddress}", 255, {nStageFlagCoilLo}, 1, "MOVEFLAG")
+        modbus_set_signal_update_frequency("MOVEFLAG", {nSampleFrequency})
+
+        return None
+    end
+
+    def main(): #main thread which handles getting and sending socket data
+        while 1:
+            strMessage = socket_read_string("{strMainSocket}", prefix="{strMessageHeader}", suffix="{strMessageFooter}")
+        
+            if strMessage == "": #no message read
+                continue
+
+            elif strMessage == "{strCheckIfMoving}":
+                if bMoveFlag == True:
+                    socket_send_string("{strMovingFlag}", "{strMainSocket}")
+                elif bMoveFlag == False:
+                    if bBadMove == True:
+                        bBadMove = False
+                        socket_send_string("{strBadFlag}", "{strMainSocket}")
+                    else:
+                        socket_send_string("{strDoneFlag}", "{strMainSocket}")
+                    end
+                end
+            
+            elif strMessage == "{strStopCommand}":
+                kill thrdMove
+                bMoveFlag = False
+                stopl(fToolAccel)
+                socket_send_string("{strDoneFlag}", "{strMainSocket}")
+
+            elif strMessage == "{strSetCommand}":
+                strSetCommand = socket_read_string("{strMainSocket}", prefix="{strMessageHeader}", suffix="{strMessageFooter}")
+                lstfFloats = socket_read_ascii_float(6, "{strMainSocket}")
+                
+                Setter(strSetCommand, lstfFloats)
+                socket_send_string("{strDoneFlag}", "{strMainSocket}")
+            
+            elif strMessage == "{strGetCommand}":
+                strGetCommand = socket_read_string("{strMainSocket}", prefix="{strMessageHeader}", suffix="{strMessageFooter}")
+                if strGetCommand == "{strGetTcp}":
+                    lstfReturnedData = GetTcp()
+                    socket_send_string(lstfReturnedData, "{strMainSocket}")
+                elif strGetCommand == "{strGetJointAngles}":
+                    lstfJoints = GetJointAngles()
+                    socket_send_string(lstfJoints, "{strMainSocket}")
+                end
+
+            elif strMessage == "{strMoveCommand}":
+                lstfData = socket_read_ascii_float(2, "{strMainSocket}")
+                fNumMoves = lstfData[1]
+                fBlendRadius = lstfData[2]/1000
+                lstnMoveTypes = socket_read_byte_list(5, "{strMainSocket}")
+                lstfMoveData = socket_read_ascii_float(30, "{strMainSocket}")
+                lstfSpeedData = socket_read_ascii_float(5, "{strMainSocket}")
+                lstfAccelData = socket_read_ascii_float(5, "{strMainSocket}")
+                thrdMove = run Move()
+                socket_send_string("{strDoneFlag}", "{strMainSocket}")
+            
+            elif strMessage == "{strControlledMove}":
+                thrdSocketRead = run SocketRead()
+                lstfCurrentJointPose = get_actual_joint_positions()
+                lstfCurrentToolPose = get_actual_tcp_pose()
+                fRobotX = lstfCurrentToolPose[0]
+                fRobotY = lstfCurrentToolPose[1]
+                fRobotZ = lstfCurrentToolPose[2]
+                fRobotRx = lstfCurrentToolPose[3]
+                fRobotRy = lstfCurrentToolPose[4]
+                fRobotRz = lstfCurrentToolPose[5]
+                bMoveFlag = True
+                while 1:
+                    lstfNewToolPose = p[fRobotX, fRobotY, fRobotZ, fRobotRx, fRobotRy, fRobotRz]
+                    lstfCurrentJointPose = get_actual_joint_positions()
+                    lstfNewJointPose = get_inverse_kin(x=lstfNewToolPose, qnear=lstfCurrentJointPose)
+                    if bMoveFlag == False:
+                        stopl(fToolAccel)
+                        kill thrdSocketRead
+                        break
+                    elif bMoveFlag == True:
+                        servoj(lstfNewJointPose, t={fControlTime}, lookahead_time={fLookaheadTime}, gain={nGain})
+                        # sync()
+                    end
+                end
+                socket_send_string("{strDoneFlag}", "{strMainSocket}")
+
+            elif strMessage == "{strSyncMove}":
+                thrdModbusRead = run ModbusRead()
+                lstfCurrentToolPose = get_actual_tcp_pose()
+                lstfCurrentJointPose = get_actual_joint_positions()
+                while 1:
+                    lstfNewToolPose = p[fRobotX, fRobotY, fRobotZ, lstfCurrentToolPose[3], lstfCurrentToolPose[4], lstfCurrentToolPose[5]]
+                    lstfNewJointPose = get_inverse_kin(x=lstfNewToolPose, qnear=lstfCurrentJointPose)
+                    if nMoveFlag == 10:
+                        servoj(lstfNewJointPose, t={fControlTime}, lookahead_time={fLookaheadTime}, gain={nGain})
+                        sync()
+                    elif nMoveFlag == 0:
+                        kill thrdModbusRead
+                        break
+                    end
+                end
+
+            elif strMessage == "{strDisconnectCommand}":
+                socket_close("{strMainSocket}")
+                break
+
+            end
+        end
+        return None
+    end
+
+    setup()
+    main()
+
+end
+"""

@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<robot_application>
+    <commands>
+        <stop name="{strStopCommand}">STP</stop>
+        <disconnect name="{strDisconnectCommand}">Disconnect</disconnect>
+        <set name="{strSetCommand}">SET</set>
+        <move name="{strMoveCommand}">MOV</move>
+        <set_tool_speed name="{strSetToolSpeed}">STS</set_tool_speed>
+        <set_joint_speed name="{strSetJointSpeed}">SJS</set_joint_speed>
+        <set_tool_accel name="{strSetToolAccel}">STA</set_tool_accel>
+        <set_joint_accel name="{strSetJointAccel}">SJA</set_joint_accel>
+        <set_payload_mass name="{strSetPayloadMass}">SPM</set_payload_mass>
+        <set_robot_stage name="{strSetRobotFromStage}">SRS</set_robot_stage>
+        <set_gravity name="{strSetGravity}">SGR</set_gravity>
+        <set_tcp name="{strSetTcp}">STC</set_tcp>
+        <set_do name="{strSetDigitalOutput}">SDO</set_do>
+        <get name="{strGetCommand}">GET</get>
+        <get_tcp name="{strGetTcp}">GTC</get_tcp>
+        <moving name="{strMovingFlag}">-</moving>
+        <done name="{strDoneFlag}">$</done>
+        <s_move name="{strSyncMove}">SYM</s_move>
+        <c_move name="{strControlledMove}">COM</c_move>
+        <header name="{strMessageHeader}">&lt;</header>
+        <footer name="{strMessageFooter}">&gt;</footer>
+        <check_if_moving name="{strCheckIfMoving}">CHK</check_if_moving>
+        <get_joint_angles name="{strGetJointAngles}">GJA</get_joint_angles>
+        <bad name="{strBadFlag}">!</bad>
+    </commands>
+    <defaults>
+        <joint_speed name="fJointSpeed">60.0</joint_speed>
+        <joint_accel name="fJointAccel">80.0</joint_accel>
+        <tool_speed name="fToolSpeed">125.0</tool_speed>
+        <tool_accel name="fToolAccel">1000.0</tool_accel>
+        <gravity_x name="fGravityX">0.5</gravity_x>
+        <gravity_y name="fGravityY">0.0</gravity_y>
+        <gravity_z name="fGravityZ">-0.866</gravity_z>
+        <payload_mass name="fPayloadMass">0.5</payload_mass>
+        <do_wait_time_ms name="fDOWaitTime">50</do_wait_time_ms>
+    </defaults>
+    <application>
+        <main_socket name="{strMainSocket}">denaliHost</main_socket>
+        <local_ip name="{strHostIp}">192.168.1.118</local_ip>
+        <local_port name="{nPort}">35001</local_port>
+        <robot_ip name="{strRobotIp}">192.168.1.105</robot_ip>
+        <robot_port name="{nRobotPort}">30003</robot_port>
+        <plc_ip name="{strStageIpAddress}">192.168.1.53</plc_ip>
+        <plc_coil_x_lo name="{nStageWorldXCoilLo}">1016</plc_coil_x_lo>
+        <plc_coil_x_hi name="{nStageWorldXCoilHi}">1017</plc_coil_x_hi>
+        <plc_coil_y_lo name="{nStageWorldYCoilLo}">1036</plc_coil_y_lo>
+        <plc_coil_y_hi name="{nStageWorldYCoilHi}">1037</plc_coil_y_hi>
+        <plc_coil_z_lo name="{nStageWorldZCoilLo}">1056</plc_coil_z_lo>
+        <plc_coil_z_hi name="{nStageWorldZCoilHi}">1057</plc_coil_z_hi>
+        <plc_coil_flag_lo name="{nStageFlagCoilLo}">1016</plc_coil_flag_lo>
+        <sample_frequency name="{nSampleFrequency}">125</sample_frequency>
+        <control_time name="{fControlTime}">0.03</control_time>
+        <lookahead_time name="{fLookaheadTime}">0.120</lookahead_time>
+        <gain name="{nGain}">1000</gain>
+        <sample_rate name="{nSampleRate_ms}">30</sample_rate>
+        <J6_lo_limit name="{fJ6LoLimit}">0</J6_lo_limit>
+        <J6_hi_limit name="{fJ6HiLimit}">6.28</J6_hi_limit>
+    </application>
+    <robot_tcps>
+    <!-- These are the 6 DOF angle axis poses for the different robot eef tcp values -->
+        <test_gripper name="TestGripper">0.0,0.84,150.97,135.000,0.0,0.0</test_gripper>
+        <calibration_paddle name="CalibrationPaddle" id="calibrationv3">0.0,0.0,72.3,90.0,0.0,0.0</calibration_paddle>
+    </robot_tcps>
+    <digital_outputs>
+        <gripper_open name="Open">0</test_gripper_open>
+        <gripper_closed name="Closed">1</test_gripper_closed>
+    </digital_outputs>
+</robot_application>
